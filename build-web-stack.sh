@@ -69,7 +69,7 @@ PHP_SRC_PKG_NAME="php-${PHP_VERSION}"
 PHP_HOME="${STACK_DIR}/${PHP_SRC_PKG_NAME}"
 PHP_SUFFIX="from/this/mirror"
 
-PATH="${PATH}:/Users/jam/wwwtest/stack/lib/cmake-${CMAKE_VERSION}/bin"
+PATH="${PATH}:${CMAKE_HOME}/bin"
 # export LDFLAGS=-L${ICONV_HOME}/lib
 
 DO_CMAKE=0 ; DO_OPENSSL=0 ; DO_LIBPNG=0 ; DO_ZLIB=0 ; DO_LIBICONV=0
