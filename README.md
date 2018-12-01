@@ -1,4 +1,4 @@
-# build-web-stack
+# build-a-web-stack
 build a LAMP web stack from source
 
 a script to build a LAMP stack from source
