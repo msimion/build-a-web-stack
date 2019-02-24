@@ -2,16 +2,17 @@
 
 APR_VERSION="1.6.5"
 APRUTIL_VERSION="1.6.1"
-CMAKE_VERSION="3.13.1"
+CMAKE_VERSION="3.13.4"
 # GCC_VERSION="8.2.0"
-LIBPNG_VERSION="1.6.35"
+LIBPNG_VERSION="1.6.36"
+LIBZIP_VERSION="1.5.1"
 ZLIB_VERSION="1.2.11"
 LIBICONV_VERSION="1.15"
 PCRE_VERSION="8.42"
 OPENSSL_VERSION="1.1.1a"
-HTTPD_VERSION="2.4.37"
-PHP_VERSION="7.2.12"
-MYSQL_VERSION="5.7.24"
+HTTPD_VERSION="2.4.38"
+PHP_VERSION="7.2.15"
+MYSQL_VERSION="5.7.25"
 
 SRC_FILE_EXT="tar.gz"
 BASE_DIR=`pwd`
@@ -32,6 +33,11 @@ LIBPNG_SRC_DIR="http://prdownloads.sourceforge.net/libpng"
 LIBPNG_SRC_PKG_NAME="libpng-${LIBPNG_VERSION}"
 LIBPNG_HOME="${LIB_DIR}/${LIBPNG_SRC_PKG_NAME}"
 LIBPNG_SUFFIX="?download"
+
+LIBZIP_SRC_DIR="https://libzip.org/download"
+LIBZIP_SRC_PKG_NAME="libzip-${LIBZIP_VERSION}"
+# LIBZIP_STAGE_DIR="${LIBZIP_SRC_PKG_NAME:0:7}${LIBZIP_SRC_PKG_NAME:12}"
+LIBZIP_HOME="${LIB_DIR}/${LIBZIP_SRC_PKG_NAME}"
 
 ZLIB_SRC_DIR="http://prdownloads.sourceforge.net/libpng"
 ZLIB_SRC_PKG_NAME="zlib-${ZLIB_VERSION}"
@@ -73,13 +79,13 @@ PATH="${PATH}:${CMAKE_HOME}/bin"
 # export LDFLAGS=-L${ICONV_HOME}/lib
 
 DO_CMAKE=0 ; DO_OPENSSL=0 ; DO_LIBPNG=0 ; DO_ZLIB=0 ; DO_LIBICONV=0
-DO_HTTPD=0 ; DO_MYSQL=0 ; DO_PHP=0
+DO_HTTPD=0 ; DO_MYSQL=0 ; DO_PHP=0 ; DO_LIBZIP=0
 
 INVALID_PARAMS=
 
 if [[ -z "$@" ]]; then
   echo "Invoked with no parameters. Exiting."
-  echo "Usage: $0 [cmake] [openssl] [libpng] [zlib] [libiconv] [httpd] [mysql] [php]"
+  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [php]"
   exit 1
 fi
 
@@ -95,6 +101,10 @@ for param in "$@" ; do
 
     "libpng" )
       DO_LIBPNG=1
+      ;;
+
+    "libzip" )
+      DO_LIBZIP=1
       ;;
 
     "zlib" )
@@ -124,7 +134,7 @@ done
 
 if [[ ! -z "${INVALID_PARAMS}" ]]; then
   echo "Invalid parameter(s):${INVALID_PARAMS}"
-  echo "Usage: $0 [cmake] [openssl] [libpng] [zlib] [libiconv] [httpd] [mysql] [php]"
+  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [php]"
   exit 1
 fi
 
@@ -213,6 +223,27 @@ do_libpng() {
   make && make install
 
   # cd .. && rm -rf ${LIBPNG_SRC_PKG_NAME}*
+  cd ..
+}
+
+#
+# LIBZIP
+#
+do_libzip() {
+  if [ ! -e ${STAGE_DIR}/${LIBZIP_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
+    curl -L -o ${LIBZIP_SRC_PKG_NAME}.${SRC_FILE_EXT} \
+      ${LIBZIP_SRC_DIR}/${LIBZIP_SRC_PKG_NAME}.${SRC_FILE_EXT}
+  fi
+
+  rm -rf ${LIBZIP_SRC_PKG_NAME} ${LIBZIP_HOME}
+  tar xvf ${LIBZIP_SRC_PKG_NAME}.${SRC_FILE_EXT}
+
+  cd ${LIBZIP_SRC_PKG_NAME}
+  mkdir bld && cd bld
+  cmake .. -DCMAKE_INSTALL_PREFIX=${LIBZIP_HOME}
+  make && make install
+
+  # cd .. && rm -rf ${LIBZIP_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -379,8 +410,12 @@ do_php() {
   rm -rf ${PHP_SRC_PKG_NAME} ${PHP_HOME}
   tar xvf ${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT}
 
-  export EXTRA_LDFLAGS=-L${LIBICONV_HOME}/lib
-  export EXTRA_LDFLAGS_PROGRAM=-L${LIBICONV_HOME}/lib
+  # export EXTRA_LDFLAGS="-L${LIBICONV_HOME}/lib -L${LIBZIP_HOME}/lib"
+  # export EXTRA_LDFLAGS_PROGRAM="-L${LIBICONV_HOME}/lib -L${LIBZIP_HOME}/lib"
+  # export EXTRA_INCLUDES=-I${LIBZIP_HOME}/include
+  # export CPLUS_INCLUDE_PATH=${LIBZIP_HOME}/include
+  export EXTRA_LDFLAGS="-L${LIBICONV_HOME}/lib"
+  export EXTRA_LDFLAGS_PROGRAM="-L${LIBICONV_HOME}/lib"
 
   cd ${PHP_SRC_PKG_NAME}
   ./configure --prefix=${PHP_HOME} \
@@ -395,6 +430,7 @@ do_php() {
     --enable-soap \
     --enable-mbstring \
     --enable-zip
+    # --with-libzip=${LIBZIP_HOME}
   make && make install
 
   # cd .. && rm -rf ${PHP_SRC_PKG_NAME}*
@@ -417,6 +453,10 @@ main() {
 
   if (( "$DO_LIBPNG")); then
     do_libpng
+  fi
+
+  if (( "$DO_LIBZIP")); then
+    do_libzip
   fi
 
   if (( "$DO_ZLIB")); then
