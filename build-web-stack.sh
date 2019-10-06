@@ -1,18 +1,19 @@
-#!/bin/sh
+#!/bin/bash
 
-APR_VERSION="1.6.5"
+APR_VERSION="1.7.0"
+EXPAT_VERSION="2.2.9"
 APRUTIL_VERSION="1.6.1"
-CMAKE_VERSION="3.13.4"
+CMAKE_VERSION="3.15.3"
 # GCC_VERSION="8.2.0"
-LIBPNG_VERSION="1.6.36"
-LIBZIP_VERSION="1.5.1"
+LIBPNG_VERSION="1.6.37"
+LIBZIP_VERSION="1.5.2"
 ZLIB_VERSION="1.2.11"
 LIBICONV_VERSION="1.15"
 PCRE_VERSION="8.42"
-OPENSSL_VERSION="1.1.1a"
-HTTPD_VERSION="2.4.38"
-PHP_VERSION="7.2.15"
-MYSQL_VERSION="5.7.25"
+OPENSSL_VERSION="1.1.1d"
+HTTPD_VERSION="2.4.41"
+PHP_VERSION="7.3.10"
+MYSQL_VERSION="5.7.27"
 
 SRC_FILE_EXT="tar.gz"
 BASE_DIR=`pwd`
@@ -47,6 +48,11 @@ ZLIB_SUFFIX="?download"
 LIBICONV_SRC_DIR="https://ftp.gnu.org/pub/gnu/libiconv"
 LIBICONV_SRC_PKG_NAME="libiconv-${LIBICONV_VERSION}"
 LIBICONV_HOME="${LIB_DIR}/${LIBICONV_SRC_PKG_NAME}"
+
+EXPAT_SRC_DIR="https://github.com/libexpat/libexpat/releases/download/R_2_2_9"
+EXPAT_SRC_PKG_NAME="expat-${EXPAT_VERSION}"
+EXPAT_HOME="${LIB_DIR}/${EXPAT_SRC_PKG_NAME}"
+# https://github.com/libexpat/libexpat/releases/download/R_2_2_9/expat-2.2.9.tar.gz
 
 APR_SRC_DIR="https://www-eu.apache.org/dist/apr"
 APR_SRC_PKG_NAME="apr-${APR_VERSION}"
@@ -181,7 +187,6 @@ do_cmake() {
   ./configure --prefix=${CMAKE_HOME}
   make && make install
 
-  # cd .. && rm -rf ${CMAKE_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -202,7 +207,6 @@ do_openssl() {
     --openssldir=${OPENSSL_HOME}
   make && make install
 
-  # cd .. && rm -rf ${OPENSSL_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -210,6 +214,9 @@ do_openssl() {
 # LIBPNG
 #
 do_libpng() {
+  export LDFLAGS="-L${ZLIB_HOME}/lib"
+  export CPPFLAGS="-I${ZLIB_HOME}/include"
+
   if [ ! -e ${STAGE_DIR}/${LIBPNG_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
     curl -L -o ${LIBPNG_SRC_PKG_NAME}.${SRC_FILE_EXT} \
       ${LIBPNG_SRC_DIR}/${LIBPNG_SRC_PKG_NAME}.${SRC_FILE_EXT}
@@ -222,7 +229,6 @@ do_libpng() {
   ./configure --prefix=${LIBPNG_HOME}
   make && make install
 
-  # cd .. && rm -rf ${LIBPNG_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -240,10 +246,13 @@ do_libzip() {
 
   cd ${LIBZIP_SRC_PKG_NAME}
   mkdir bld && cd bld
-  cmake .. -DCMAKE_INSTALL_PREFIX=${LIBZIP_HOME}
+  cmake .. -DCMAKE_INSTALL_PREFIX=${LIBZIP_HOME} \
+    -DZLIB_LIBRARY=${ZLIB_HOME}/lib/libz.so \
+    -DZLIB_INCLUDE_DIR=${ZLIB_HOME}/include
+    # -DCMAKE_CXX_FLAGS="-lz"
+
   make && make install
 
-  # cd .. && rm -rf ${LIBZIP_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -263,7 +272,6 @@ do_zlib() {
   ./configure --prefix=${ZLIB_HOME}
   make && make install
 
-  # cd .. && rm -rf ${ZLIB_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -283,7 +291,25 @@ do_libiconv() {
   ./configure --prefix=${LIBICONV_HOME}
   make && make install
 
-  # cd .. && rm -rf ${LIBICONV_SRC_PKG_NAME}*
+  cd ..
+}
+
+#
+# EXPAT
+#
+do_expat() {
+  if [ ! -e ${STAGE_DIR}/${EXPAT_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
+    curl -L -o ${EXPAT_SRC_PKG_NAME}.${SRC_FILE_EXT} \
+      ${EXPAT_SRC_DIR}/${EXPAT_SRC_PKG_NAME}.${SRC_FILE_EXT}
+  fi
+
+  rm -rf ${EXPAT_SRC_PKG_NAME} ${EXPAT_HOME}
+  tar xvf ${EXPAT_SRC_PKG_NAME}.${SRC_FILE_EXT}
+
+  cd ${EXPAT_SRC_PKG_NAME}
+  ./configure --prefix=${EXPAT_HOME}
+  make && make install
+
   cd ..
 }
 
@@ -303,7 +329,6 @@ do_apr() {
   ./configure --prefix=${APR_HOME}
   make && make install
 
-  # cd .. && rm -rf ${APR_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -320,10 +345,9 @@ do_aprutil() {
   tar xvf ${APRUTIL_SRC_PKG_NAME}.${SRC_FILE_EXT}
 
   cd ${APRUTIL_SRC_PKG_NAME}
-  ./configure --prefix=${APRUTIL_HOME} --with-apr=${APR_HOME}
+  ./configure --prefix=${APRUTIL_HOME} --with-apr=${APR_HOME} --with-expat=${EXPAT_HOME}
   make && make install
 
-  # cd .. && rm -rf ${APRUTIL_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -343,7 +367,6 @@ do_pcre() {
   ./configure --prefix=${PCRE_HOME}
   make && make install
 
-  # cd .. && rm -rf ${PCRE_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -351,6 +374,8 @@ do_pcre() {
 # HTTPD
 #
 do_httpd() {
+  # export EXTRA_INCLUDES=-I${EXPAT_HOME}
+  do_expat
   do_apr
   do_aprutil
   do_pcre
@@ -372,7 +397,6 @@ do_httpd() {
     --enable-so
   make && make install
 
-  # cd .. && rm -rf ${HTTPD_SRC_PKG_NAME}*
   cd ..
 }
 
@@ -394,7 +418,6 @@ do_mysql() {
       -DWITH_BOOST=${STAGE_DIR}/${MYSQL_STAGE_DIR}/boost
   make && make install
 
-  # cd ../.. && rm -rf ${MYSQL_SRC_PKG_NAME:0:5}*
   cd ../..
 }
 
@@ -410,10 +433,6 @@ do_php() {
   rm -rf ${PHP_SRC_PKG_NAME} ${PHP_HOME}
   tar xvf ${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT}
 
-  # export EXTRA_LDFLAGS="-L${LIBICONV_HOME}/lib -L${LIBZIP_HOME}/lib"
-  # export EXTRA_LDFLAGS_PROGRAM="-L${LIBICONV_HOME}/lib -L${LIBZIP_HOME}/lib"
-  # export EXTRA_INCLUDES=-I${LIBZIP_HOME}/include
-  # export CPLUS_INCLUDE_PATH=${LIBZIP_HOME}/include
   export EXTRA_LDFLAGS="-L${LIBICONV_HOME}/lib"
   export EXTRA_LDFLAGS_PROGRAM="-L${LIBICONV_HOME}/lib"
 
@@ -429,11 +448,11 @@ do_php() {
     --with-iconv=${LIBICONV_HOME} \
     --enable-soap \
     --enable-mbstring \
-    --enable-zip
-    # --with-libzip=${LIBZIP_HOME}
+    --enable-zip \
+    --with-libzip=${LIBZIP_HOME}
+
   make && make install
 
-  # cd .. && rm -rf ${PHP_SRC_PKG_NAME}*
   cd ..
 }
 
