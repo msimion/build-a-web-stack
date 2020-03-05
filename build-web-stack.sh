@@ -3,17 +3,19 @@
 APR_VERSION="1.7.0"
 EXPAT_VERSION="2.2.9"
 APRUTIL_VERSION="1.6.1"
-CMAKE_VERSION="3.15.3"
+CMAKE_VERSION="3.16.5"
 # GCC_VERSION="8.2.0"
 LIBPNG_VERSION="1.6.37"
-LIBZIP_VERSION="1.5.2"
+LIBZIP_VERSION="1.6.1"
 ZLIB_VERSION="1.2.11"
-LIBICONV_VERSION="1.15"
-PCRE_VERSION="8.42"
+LIBICONV_VERSION="1.16"
+PCRE_VERSION="8.44"
 OPENSSL_VERSION="1.1.1d"
+ONIGURUMA_VERSION="6.9.4"
 HTTPD_VERSION="2.4.41"
-PHP_VERSION="7.3.10"
-MYSQL_VERSION="5.7.27"
+PHP_VERSION="7.4.3"
+MYSQL_VERSION="5.7.29"
+LIBCURL_VERSION="7.69.0"
 
 SRC_FILE_EXT="tar.gz"
 BASE_DIR=`pwd`
@@ -26,6 +28,10 @@ CMAKE_SRC_DIR="https://github.com/Kitware/CMake/releases/download/v"${CMAKE_VERS
 CMAKE_SRC_PKG_NAME="cmake-${CMAKE_VERSION}"
 CMAKE_HOME="${LIB_DIR}/${CMAKE_SRC_PKG_NAME}"
 
+ONIGURUMA_SRC_DIR="https://github.com/kkos/oniguruma/releases/download/v${ONIGURUMA_VERSION}"
+ONIGURUMA_SRC_PKG_NAME="onig-${ONIGURUMA_VERSION}"
+ONIGURUMA_HOME="${LIB_DIR}/${ONIGURUMA_SRC_PKG_NAME}"
+
 OPENSSL_SRC_DIR="https://www.openssl.org/source"
 OPENSSL_SRC_PKG_NAME="openssl-${OPENSSL_VERSION}"
 OPENSSL_HOME="${LIB_DIR}/${OPENSSL_SRC_PKG_NAME}"
@@ -37,7 +43,6 @@ LIBPNG_SUFFIX="?download"
 
 LIBZIP_SRC_DIR="https://libzip.org/download"
 LIBZIP_SRC_PKG_NAME="libzip-${LIBZIP_VERSION}"
-# LIBZIP_STAGE_DIR="${LIBZIP_SRC_PKG_NAME:0:7}${LIBZIP_SRC_PKG_NAME:12}"
 LIBZIP_HOME="${LIB_DIR}/${LIBZIP_SRC_PKG_NAME}"
 
 ZLIB_SRC_DIR="http://prdownloads.sourceforge.net/libpng"
@@ -52,7 +57,6 @@ LIBICONV_HOME="${LIB_DIR}/${LIBICONV_SRC_PKG_NAME}"
 EXPAT_SRC_DIR="https://github.com/libexpat/libexpat/releases/download/R_2_2_9"
 EXPAT_SRC_PKG_NAME="expat-${EXPAT_VERSION}"
 EXPAT_HOME="${LIB_DIR}/${EXPAT_SRC_PKG_NAME}"
-# https://github.com/libexpat/libexpat/releases/download/R_2_2_9/expat-2.2.9.tar.gz
 
 APR_SRC_DIR="https://www-eu.apache.org/dist/apr"
 APR_SRC_PKG_NAME="apr-${APR_VERSION}"
@@ -76,22 +80,30 @@ MYSQL_SRC_PKG_NAME="mysql-boost-${MYSQL_VERSION}"
 MYSQL_STAGE_DIR="${MYSQL_SRC_PKG_NAME:0:6}${MYSQL_SRC_PKG_NAME:12}"
 MYSQL_HOME="${STACK_DIR}/${MYSQL_SRC_PKG_NAME:0:6}${MYSQL_SRC_PKG_NAME:12}"
 
+LIBCURL_SRC_DIR="https://curl.haxx.se/download"
+LIBCURL_SRC_PKG_NAME="curl-${LIBCURL_VERSION}"
+LIBCURL_HOME="${LIB_DIR}/${LIBCURL_SRC_PKG_NAME}"
+
 PHP_SRC_DIR="http://de2.php.net/get"
 PHP_SRC_PKG_NAME="php-${PHP_VERSION}"
 PHP_HOME="${STACK_DIR}/${PHP_SRC_PKG_NAME}"
 PHP_SUFFIX="from/this/mirror"
 
 PATH="${PATH}:${CMAKE_HOME}/bin"
-# export LDFLAGS=-L${ICONV_HOME}/lib
 
 DO_CMAKE=0 ; DO_OPENSSL=0 ; DO_LIBPNG=0 ; DO_ZLIB=0 ; DO_LIBICONV=0
-DO_HTTPD=0 ; DO_MYSQL=0 ; DO_PHP=0 ; DO_LIBZIP=0
+DO_HTTPD=0 ; DO_MYSQL=0 ; DO_PHP=0 ; DO_LIBZIP=0 ; DO_ONIGURUMA=0
+DO_LIBCURL=0
 
 INVALID_PARAMS=
 
+usage() {
+  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [oniguruma] [libcurl] [php]"
+}
+
 if [[ -z "$@" ]]; then
-  echo "Invoked with no parameters. Exiting."
-  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [php]"
+  echo "Invoked with no parameters."
+  usage
   exit 1
 fi
 
@@ -128,9 +140,17 @@ for param in "$@" ; do
     "mysql" )
       DO_MYSQL=1
       ;;
+      
+    "oniguruma" )
+      DO_ONIGURUMA=1
+      ;;
 
     "php" )
       DO_PHP=1
+      ;;
+      
+    "libcurl" )
+      DO_LIBCURL=1
       ;;
 
     * )
@@ -140,7 +160,7 @@ done
 
 if [[ ! -z "${INVALID_PARAMS}" ]]; then
   echo "Invalid parameter(s):${INVALID_PARAMS}"
-  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [php]"
+  usage
   exit 1
 fi
 
@@ -175,6 +195,8 @@ cd ${STAGE_DIR}
 # CMAKE
 #
 do_cmake() {
+  export OPENSSL_ROOT_DIR=$OPENSSL_HOME
+  
   if [ ! -e ${STAGE_DIR}/${CMAKE_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
     curl -L -o ${CMAKE_SRC_PKG_NAME}.${SRC_FILE_EXT} \
       ${CMAKE_SRC_DIR}/${CMAKE_SRC_PKG_NAME}.${SRC_FILE_EXT}
@@ -185,6 +207,25 @@ do_cmake() {
 
   cd ${CMAKE_SRC_PKG_NAME}
   ./configure --prefix=${CMAKE_HOME}
+  make && make install
+
+  cd ..
+}
+
+#
+# ONIGURUMA
+#
+do_oniguruma() {
+  if [ ! -e ${STAGE_DIR}/${ONIGURUMA_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
+    curl -L -o ${ONIGURUMA_SRC_PKG_NAME}.${SRC_FILE_EXT} \
+      ${ONIGURUMA_SRC_DIR}/${ONIGURUMA_SRC_PKG_NAME}.${SRC_FILE_EXT}
+  fi
+
+  rm -rf ${ONIGURUMA_SRC_PKG_NAME} ${ONIGURUMA_HOME}
+  tar xvf ${ONIGURUMA_SRC_PKG_NAME}.${SRC_FILE_EXT}
+
+  cd ${ONIGURUMA_SRC_PKG_NAME}
+  ./configure --prefix=${ONIGURUMA_HOME}
   make && make install
 
   cd ..
@@ -374,7 +415,6 @@ do_pcre() {
 # HTTPD
 #
 do_httpd() {
-  # export EXTRA_INCLUDES=-I${EXPAT_HOME}
   do_expat
   do_apr
   do_aprutil
@@ -415,7 +455,8 @@ do_mysql() {
   cd ${MYSQL_STAGE_DIR}
   mkdir bld && cd bld
   cmake .. -DCMAKE_INSTALL_PREFIX=${MYSQL_HOME} \
-      -DWITH_BOOST=${STAGE_DIR}/${MYSQL_STAGE_DIR}/boost
+      -DWITH_BOOST=${STAGE_DIR}/${MYSQL_STAGE_DIR}/boost \
+      -DWITH_SSL=/u01/web/stack/lib/openssl-1.1.1d
   make && make install
 
   cd ../..
@@ -425,6 +466,8 @@ do_mysql() {
 # PHP
 #
 do_php() {
+  export PKG_CONFIG_PATH=$ONIGURUMA_HOME/lib/pkgconfig:$ZLIB_HOME/lib/pkgconfig:$OPENSSL_HOME/lib/pkgconfig:$LIBCURL_HOME/lib/pkgconfig:$PKG_CONFIG_PATH
+  
   if [ ! -e ${STAGE_DIR}/${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
     curl -L -o ${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT} \
       ${PHP_SRC_DIR}/${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT}/${PHP_SUFFIX}
@@ -433,24 +476,39 @@ do_php() {
   rm -rf ${PHP_SRC_PKG_NAME} ${PHP_HOME}
   tar xvf ${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT}
 
-  export EXTRA_LDFLAGS="-L${LIBICONV_HOME}/lib"
-  export EXTRA_LDFLAGS_PROGRAM="-L${LIBICONV_HOME}/lib"
-
   cd ${PHP_SRC_PKG_NAME}
   ./configure --prefix=${PHP_HOME} \
     --with-apxs2=${HTTPD_HOME}/bin/apxs \
     --with-mysqli \
     --with-pdo-mysql \
     --with-zlib-dir=${ZLIB_HOME} \
-    --with-gd \
-    --with-png-dir=${LIBPNG_HOME} \
     --with-openssl=${OPENSSL_HOME} \
     --with-iconv=${LIBICONV_HOME} \
     --enable-soap \
     --enable-mbstring \
-    --enable-zip \
-    --with-libzip=${LIBZIP_HOME}
+    --enable-opcache \
+    --enable-pcntl \
+    --enable-intl \
+    --with-curl
+  make && make install
 
+  cd ..
+}
+
+#
+# LIBCURL
+#
+do_libcurl() {
+  if [ ! -e ${STAGE_DIR}/${LIBCURL_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
+    curl -L -o ${LIBCURL_SRC_PKG_NAME}.${SRC_FILE_EXT} \
+      ${LIBCURL_SRC_DIR}/${LIBCURL_SRC_PKG_NAME}.${SRC_FILE_EXT}
+  fi
+
+  rm -rf ${LIBCURL_SRC_PKG_NAME} ${LIBCURL_HOME}
+  tar xvf ${LIBCURL_SRC_PKG_NAME}.${SRC_FILE_EXT}
+
+  cd ${LIBCURL_SRC_PKG_NAME}
+  ./configure --prefix=${LIBCURL_HOME}
   make && make install
 
   cd ..
@@ -493,9 +551,17 @@ main() {
   if (( "$DO_MYSQL")); then
     do_mysql
   fi
+  
+  if (( "$DO_ONIGURUMA")); then
+    do_oniguruma
+  fi
 
   if (( "$DO_PHP")); then
     do_php
+  fi
+  
+  if (( "$DO_LIBCURL")); then
+    do_libcurl
   fi
 }
 
