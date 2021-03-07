@@ -1,21 +1,22 @@
 #!/bin/bash
 
 APR_VERSION="1.7.0"
-EXPAT_VERSION="2.2.9"
+EXPAT_VERSION="2.2.10"
 APRUTIL_VERSION="1.6.1"
-CMAKE_VERSION="3.16.5"
+CMAKE_VERSION="3.19.4"
 # GCC_VERSION="8.2.0"
 LIBPNG_VERSION="1.6.37"
-LIBZIP_VERSION="1.6.1"
+LIBZIP_VERSION="1.7.3"
 ZLIB_VERSION="1.2.11"
 LIBICONV_VERSION="1.16"
 PCRE_VERSION="8.44"
-OPENSSL_VERSION="1.1.1e"
-ONIGURUMA_VERSION="6.9.4"
-HTTPD_VERSION="2.4.41"
-PHP_VERSION="7.4.4"
-MYSQL_VERSION="5.7.29"
+OPENSSL_VERSION="1.1.1j"
+ONIGURUMA_VERSION="6.9.6"
+HTTPD_VERSION="2.4.46"
+PHP_VERSION="7.4.16"
+MYSQL_VERSION="5.7.33"
 LIBCURL_VERSION="7.69.1"
+XDEBUG_VERSION="3.0.3"
 
 SRC_FILE_EXT="tar.gz"
 BASE_DIR=`pwd`
@@ -89,16 +90,22 @@ PHP_SRC_PKG_NAME="php-${PHP_VERSION}"
 PHP_HOME="${STACK_DIR}/${PHP_SRC_PKG_NAME}"
 PHP_SUFFIX="from/this/mirror"
 
+XDEBUG_SRC_DIR="https://xdebug.org/files"
+XDEBUG_SRC_PKG_NAME="xdebug-${XDEBUG_VERSION}"
+XDEBUG_HOME="${LIB_DIR}/${XDEBUG_SRC_PKG_NAME}"
+
 PATH="${PATH}:${CMAKE_HOME}/bin"
+
+export PKG_CONFIG_PATH=$ONIGURUMA_HOME/lib/pkgconfig:$ZLIB_HOME/lib/pkgconfig:$OPENSSL_HOME/lib/pkgconfig:$LIBCURL_HOME/lib/pkgconfig:$LIBPNG_HOME/lib/pkgconfig:$PKG_CONFIG_PATH
 
 DO_CMAKE=0 ; DO_OPENSSL=0 ; DO_LIBPNG=0 ; DO_ZLIB=0 ; DO_LIBICONV=0
 DO_HTTPD=0 ; DO_MYSQL=0 ; DO_PHP=0 ; DO_LIBZIP=0 ; DO_ONIGURUMA=0
-DO_LIBCURL=0
+DO_LIBCURL=0 ; DO_XDEBUG=0
 
 INVALID_PARAMS=
 
 usage() {
-  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [oniguruma] [libcurl] [php]"
+  echo "Usage: $0 [cmake] [openssl] [libpng] [libzip] [zlib] [libiconv] [httpd] [mysql] [oniguruma] [libcurl] [php] [xdebug]"
 }
 
 if [[ -z "$@" ]]; then
@@ -151,6 +158,10 @@ for param in "$@" ; do
       
     "libcurl" )
       DO_LIBCURL=1
+      ;;
+      
+    "xdebug" )
+      DO_XDEBUG=1
       ;;
 
     * )
@@ -246,7 +257,13 @@ do_openssl() {
   cd ${OPENSSL_SRC_PKG_NAME}
   ./config --prefix=${OPENSSL_HOME} \
     --openssldir=${OPENSSL_HOME}
-  make && make install
+  make && make install_sw
+
+  if [ $? !=0 ]
+  then
+    echo "the last command did not finish successfully. exiting."
+    exit
+  fi
 
   cd ..
 }
@@ -434,10 +451,17 @@ do_httpd() {
     --with-apr-util=${APRUTIL_HOME} \
     --with-pcre=${PCRE_HOME} \
     --with-port=${HTTPD_LISTEN_PORT} \
-    --enable-so
+    --enable-so \
+    --enable-ssl
+    # --enable-http2
   make && make install
-
-  cd ..
+  
+  cd ${HTTPD_HOME}/conf
+  mv httpd.conf httpd.conf.original
+  ln -s ${STACK_DIR}/config/httpd/httpd.conf httpd.conf
+  
+  cd ${STAGE_DIR}
+  # cd ..
 }
 
 #
@@ -456,7 +480,7 @@ do_mysql() {
   mkdir bld && cd bld
   cmake .. -DCMAKE_INSTALL_PREFIX=${MYSQL_HOME} \
       -DWITH_BOOST=${STAGE_DIR}/${MYSQL_STAGE_DIR}/boost \
-      -DWITH_SSL=/u01/web/stack/lib/openssl-1.1.1d
+      -DWITH_SSL=${OPENSSL_HOME}
   make && make install
 
   cd ../..
@@ -465,8 +489,11 @@ do_mysql() {
 #
 # PHP
 #
+# NOTE: must do XDEBUG manually after building PHP to regenerate php.ini
+# NOTE: XDEBUG now runs automatically after php build is complete
+#
 do_php() {
-  export PKG_CONFIG_PATH=$ONIGURUMA_HOME/lib/pkgconfig:$ZLIB_HOME/lib/pkgconfig:$OPENSSL_HOME/lib/pkgconfig:$LIBCURL_HOME/lib/pkgconfig:$PKG_CONFIG_PATH
+  do_oniguruma
   
   if [ ! -e ${STAGE_DIR}/${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT} ]; then
     curl -L -o ${PHP_SRC_PKG_NAME}.${SRC_FILE_EXT} \
@@ -481,18 +508,26 @@ do_php() {
     --with-apxs2=${HTTPD_HOME}/bin/apxs \
     --with-mysqli \
     --with-pdo-mysql \
-    --with-zlib-dir=${ZLIB_HOME} \
+    --with-zlib=${ZLIB_HOME} \
     --with-openssl=${OPENSSL_HOME} \
     --with-iconv=${LIBICONV_HOME} \
     --enable-soap \
     --enable-mbstring \
-    --enable-opcache \
     --enable-pcntl \
     --enable-intl \
-    --with-curl
+    --with-curl \
+    --enable-gd
   make && make install
 
+  if [ $? != 0 ]
+  then
+    echo "*** ERR * the php build did not finish successfully. exiting ***"
+    exit
+  fi
+
   cd ..
+  
+  do_xdebug
 }
 
 #
@@ -508,10 +543,34 @@ do_libcurl() {
   tar xvf ${LIBCURL_SRC_PKG_NAME}.${SRC_FILE_EXT}
 
   cd ${LIBCURL_SRC_PKG_NAME}
-  ./configure --prefix=${LIBCURL_HOME}
+  ./configure --prefix=${LIBCURL_HOME} --with-ssl=${OPENSSL_HOME}
   make && make install
 
   cd ..
+}
+
+#
+# XDEBUG
+#
+do_xdebug() {
+  if [ ! -e ${STAGE_DIR}/${XDEBUG_SRC_PKG_NAME}.tgz ]; then
+    curl -L -o ${XDEBUG_SRC_PKG_NAME}.tgz \
+      ${XDEBUG_SRC_DIR}/${XDEBUG_SRC_PKG_NAME}.tgz
+  fi
+
+  rm -rf ${XDEBUG_SRC_PKG_NAME} ${XDEBUG_HOME}
+  tar xvf ${XDEBUG_SRC_PKG_NAME}.tgz
+
+  cd ${XDEBUG_SRC_PKG_NAME}
+  ${PHP_HOME}/bin/phpize
+  ./configure --prefix=${XDEBUG_HOME} --with-php-config=${PHP_HOME}/bin/php-config
+  make && make install
+
+  cd ..
+  
+  echo "opcache.enable=1" > ${PHP_HOME}/lib/php.ini
+  echo "zend_extension=opcache.so" >> ${PHP_HOME}/lib/php.ini
+  echo "zend_extension=xdebug.so" >> ${PHP_HOME}/lib/php.ini
 }
 
 #
@@ -519,13 +578,13 @@ do_libcurl() {
 #
 main() {
   # do_gcc
+  
+  if (( "$DO_OPENSSL")); then
+    do_openssl
+  fi
 
   if (( "$DO_CMAKE")); then
     do_cmake
-  fi
-
-  if (( "$DO_OPENSSL")); then
-    do_openssl
   fi
 
   if (( "$DO_LIBPNG")); then
@@ -556,12 +615,16 @@ main() {
     do_oniguruma
   fi
 
+  if (( "$DO_LIBCURL")); then
+    do_libcurl
+  fi
+
   if (( "$DO_PHP")); then
     do_php
   fi
   
-  if (( "$DO_LIBCURL")); then
-    do_libcurl
+  if (( "$DO_XDEBUG")); then
+    do_xdebug
   fi
 }
 
